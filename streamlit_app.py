@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 # 🔁 Auto-refresh every 1 minute
 count = st_autorefresh(interval=60_000, limit=None, key="data_refresh")
 
-# ------------------ GOOGLE SHEETS SETUP ------------------
-# Use Streamlit Secrets
+# --- Google Sheets setup using Streamlit Secrets ---
 sa_info = st.secrets["gcp_service_account"]
-creds = Credentials.from_service_account_info(sa_info, scopes=[
+
+creds = Credentials.from_service_account_info(dict(sa_info), scopes=[
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ])
@@ -19,14 +19,14 @@ client = gspread.authorize(creds)
 spreadsheet = client.open("Debt Collections Dashboard")
 chat_sheet = spreadsheet.worksheet("Agent Chat")
 
-# ------------------ ROLE MAPPING ------------------
+# --- Role mapping ---
 ROLE_MAP = {
     "superadmin": {"username": "superadmin", "password": "superpass"},
     "admin": {"username": "admin", "password": "adminpass"},
     "agent": {"username": "agent", "password": "agentpass"}
 }
 
-# ------------------ LOGIN SYSTEM ------------------
+# --- LOGIN SYSTEM ---
 st.sidebar.title("🔐 Login")
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -57,7 +57,7 @@ else:
     role = st.session_state.role
     agent_name = st.session_state.agent_name
 
-# ------------------ UNREAD MESSAGES NOTIFICATION ------------------
+# ✅ Unread Messages Popup Notification
 chat_df = pd.DataFrame(chat_sheet.get_all_records())
 if role == "agent":
     unread_msgs = chat_df[(chat_df["Receiver"] == "Agent") & (chat_df["Sender"] == "Admin")]
@@ -69,7 +69,7 @@ else:
 if not unread_msgs.empty:
     st.info(f"📨 You have {len(unread_msgs)} unread message(s). Scroll to chat inbox to read.")
 
-# ------------------ LOAD DASHBOARD DATA ------------------
+# ----------------------- Data Load -------------------------
 TARGET_HEADERS = [
     "LID", "Account Holder ID", "Account Holder Name", "Mobile", "Product",
     "Outstanding Balance", "Contact Date", "Account State", "Repayment Status",
@@ -141,8 +141,7 @@ metrics_df = pd.DataFrame({
     "Total Allocated Balance": list(state_allocated.values) + [total_allocated],
     "Total Collected": list(state_collected.values) + [total_collected],
     "Conversion Rate": [
-        f"{r:.2f}%" for r in list(conversion_rate_state.values)
-        + [(total_collected / total_allocated * 100) if total_allocated else 0.0]
+        f"{r:.2f}%" for r in list(conversion_rate_state.values) + [(total_collected / total_allocated * 100) if total_allocated else 0.0]
     ]
 })
 
@@ -165,7 +164,17 @@ def convert_agent_csv(df):
 
 metrics_csv = convert_metrics_csv(metrics_df)
 
-# ------------------ STREAMLIT DASHBOARD ------------------
+metrics_df_styled = metrics_df.style.format({
+    "Total Allocated Balance": "{:,.2f}",
+    "Total Collected": "{:,.2f}",
+    "Conversion Rate": "{}"
+})
+
+partials_styled = partials_df.style.format({
+    "Partials Count": "{:,}",
+    "Partial Amount": "{:,.2f}"
+})
+
 st.set_page_config(page_title="Debt Collections Dashboard", layout="wide")
 st.title("📊 Debt Collections Dashboard")
 st.subheader("View and analyze debt recovery performance.")
@@ -173,18 +182,11 @@ st.subheader("View and analyze debt recovery performance.")
 col1, col2 = st.columns([1, 2])
 with col1:
     st.metric("💰 Total Amount Collected", f"KES {total_collected:,.2f}")
-    st.dataframe(metrics_df.style.format({
-        "Total Allocated Balance": "{:,.2f}",
-        "Total Collected": "{:,.2f}",
-        "Conversion Rate": "{}"
-    }), use_container_width=True)
+    st.dataframe(metrics_df_styled, use_container_width=True)
     if role in ("admin", "superadmin"):
         st.download_button("📥 Download State Metrics CSV", data=metrics_csv, file_name="state_metrics.csv", mime="text/csv")
     st.write("### 🟡 Paying Partially Summary")
-    st.dataframe(partials_df.style.format({
-        "Partials Count": "{:,}",
-        "Partial Amount": "{:,.2f}"
-    }), use_container_width=True)
+    st.dataframe(partials_styled, use_container_width=True)
 
 with col2:
     with st.expander("🔽 Select agents to display", expanded=False):
@@ -200,7 +202,6 @@ with col2:
     if role in ("admin", "superadmin"):
         st.download_button("📥 Download Agent Breakdown CSV", data=filtered_csv, file_name="agent_data.csv", mime="text/csv")
 
-# ------------------ TABS ------------------
 tab_names = states + ["Total Collected", "Conversion Rate", "Account State Analytics"]
 tabs = st.tabs(tab_names)
 
@@ -222,7 +223,7 @@ for name, tab in zip(tab_names, tabs):
                 name: "{:,.2f}" if name != "Conversion Rate" else "{:.2%}"
             }))
 
-# ------------------ INTERNAL CHAT ------------------
+# 💬 Internal Agent Chat
 st.sidebar.title("💬 Internal Chat")
 with st.sidebar:
     st.markdown("#### 📝 Send Message")
@@ -277,7 +278,7 @@ with st.sidebar:
                 st.markdown(f"↪️ Reply to: {row['ReplyTo']}")
             st.markdown(f"> {row['Message']}")
 
-# ------------------ CHANGE PASSWORD (SIMULATED) ------------------
+# 🔑 Change Password (Simulated)
 with st.sidebar.expander("🔄 Change Password"):
     st.markdown("Change your login password.")
     old_pass = st.text_input("Current Password", type="password")
