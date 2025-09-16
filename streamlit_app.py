@@ -2,28 +2,31 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
-import os
 
 # 🔁 Auto-refresh every 1 minute
 count = st_autorefresh(interval=60_000, limit=None, key="data_refresh")
 
-# Google Sheets setup
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+# ------------------ GOOGLE SHEETS SETUP ------------------
+# Use Streamlit Secrets
+sa_info = st.secrets["gcp_service_account"]
+creds = Credentials.from_service_account_info(sa_info, scopes=[
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+])
 client = gspread.authorize(creds)
 spreadsheet = client.open("Debt Collections Dashboard")
 chat_sheet = spreadsheet.worksheet("Agent Chat")
 
-# Role mapping
+# ------------------ ROLE MAPPING ------------------
 ROLE_MAP = {
     "superadmin": {"username": "superadmin", "password": "superpass"},
     "admin": {"username": "admin", "password": "adminpass"},
     "agent": {"username": "agent", "password": "agentpass"}
 }
 
-# --- LOGIN SYSTEM ---
+# ------------------ LOGIN SYSTEM ------------------
 st.sidebar.title("🔐 Login")
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -54,7 +57,7 @@ else:
     role = st.session_state.role
     agent_name = st.session_state.agent_name
 
-# ✅ Unread Messages Popup Notification
+# ------------------ UNREAD MESSAGES NOTIFICATION ------------------
 chat_df = pd.DataFrame(chat_sheet.get_all_records())
 if role == "agent":
     unread_msgs = chat_df[(chat_df["Receiver"] == "Agent") & (chat_df["Sender"] == "Admin")]
@@ -66,7 +69,7 @@ else:
 if not unread_msgs.empty:
     st.info(f"📨 You have {len(unread_msgs)} unread message(s). Scroll to chat inbox to read.")
 
-# ----------------------- Data Load -------------------------
+# ------------------ LOAD DASHBOARD DATA ------------------
 TARGET_HEADERS = [
     "LID", "Account Holder ID", "Account Holder Name", "Mobile", "Product",
     "Outstanding Balance", "Contact Date", "Account State", "Repayment Status",
@@ -138,8 +141,7 @@ metrics_df = pd.DataFrame({
     "Total Allocated Balance": list(state_allocated.values) + [total_allocated],
     "Total Collected": list(state_collected.values) + [total_collected],
     "Conversion Rate": [
-        f"{r:.2f}%"
-        for r in list(conversion_rate_state.values)
+        f"{r:.2f}%" for r in list(conversion_rate_state.values)
         + [(total_collected / total_allocated * 100) if total_allocated else 0.0]
     ]
 })
@@ -163,17 +165,7 @@ def convert_agent_csv(df):
 
 metrics_csv = convert_metrics_csv(metrics_df)
 
-metrics_df_styled = metrics_df.style.format({
-    "Total Allocated Balance": "{:,.2f}",
-    "Total Collected": "{:,.2f}",
-    "Conversion Rate": "{}"
-})
-
-partials_styled = partials_df.style.format({
-    "Partials Count": "{:,}",
-    "Partial Amount": "{:,.2f}"
-})
-
+# ------------------ STREAMLIT DASHBOARD ------------------
 st.set_page_config(page_title="Debt Collections Dashboard", layout="wide")
 st.title("📊 Debt Collections Dashboard")
 st.subheader("View and analyze debt recovery performance.")
@@ -181,11 +173,18 @@ st.subheader("View and analyze debt recovery performance.")
 col1, col2 = st.columns([1, 2])
 with col1:
     st.metric("💰 Total Amount Collected", f"KES {total_collected:,.2f}")
-    st.dataframe(metrics_df_styled, use_container_width=True)
+    st.dataframe(metrics_df.style.format({
+        "Total Allocated Balance": "{:,.2f}",
+        "Total Collected": "{:,.2f}",
+        "Conversion Rate": "{}"
+    }), use_container_width=True)
     if role in ("admin", "superadmin"):
         st.download_button("📥 Download State Metrics CSV", data=metrics_csv, file_name="state_metrics.csv", mime="text/csv")
     st.write("### 🟡 Paying Partially Summary")
-    st.dataframe(partials_styled, use_container_width=True)
+    st.dataframe(partials_df.style.format({
+        "Partials Count": "{:,}",
+        "Partial Amount": "{:,.2f}"
+    }), use_container_width=True)
 
 with col2:
     with st.expander("🔽 Select agents to display", expanded=False):
@@ -201,6 +200,7 @@ with col2:
     if role in ("admin", "superadmin"):
         st.download_button("📥 Download Agent Breakdown CSV", data=filtered_csv, file_name="agent_data.csv", mime="text/csv")
 
+# ------------------ TABS ------------------
 tab_names = states + ["Total Collected", "Conversion Rate", "Account State Analytics"]
 tabs = st.tabs(tab_names)
 
@@ -222,14 +222,13 @@ for name, tab in zip(tab_names, tabs):
                 name: "{:,.2f}" if name != "Conversion Rate" else "{:.2%}"
             }))
 
-# 💬 Internal Agent Chat
+# ------------------ INTERNAL CHAT ------------------
 st.sidebar.title("💬 Internal Chat")
-
 with st.sidebar:
     st.markdown("#### 📝 Send Message")
     with st.form("chat_form", clear_on_submit=True):
         agent_names_sorted = sorted(agent_totals.index)
-        sender = st.selectbox("Agent Name", agent_names_sorted)  # ✅ Now visible to all roles
+        sender = st.selectbox("Agent Name", agent_names_sorted)
         st.info(f"You're sending message as **{sender}**")
         message = st.text_area("Type your message")
         reply_to = st.text_input("Replying to (Message ID, optional):") if role in ("admin", "superadmin") else ""
@@ -244,7 +243,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📨 Chat Inbox")
     chat_data = pd.DataFrame(chat_sheet.get_all_records())
-
     if role != "agent":
         filter_mode = st.radio("Filter messages by:", ["Sent Today", "Date Range"])
         if filter_mode == "Date Range":
@@ -279,7 +277,7 @@ with st.sidebar:
                 st.markdown(f"↪️ Reply to: {row['ReplyTo']}")
             st.markdown(f"> {row['Message']}")
 
-# 🔑 Change Password (Simulated)
+# ------------------ CHANGE PASSWORD (SIMULATED) ------------------
 with st.sidebar.expander("🔄 Change Password"):
     st.markdown("Change your login password.")
     old_pass = st.text_input("Current Password", type="password")
@@ -293,5 +291,3 @@ with st.sidebar.expander("🔄 Change Password"):
             st.error("All fields required.")
         else:
             st.success(f"Password for user {username} updated and sent to email (simulation).")
-
-
