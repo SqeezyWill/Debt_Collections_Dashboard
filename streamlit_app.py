@@ -10,11 +10,14 @@ count = st_autorefresh(interval=60_000, limit=None, key="data_refresh")
 
 # --- Google Sheets setup using Streamlit Secrets ---
 sa_info = st.secrets["gcp_service_account"]
+# Fix private_key formatting
+sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
 
-creds = Credentials.from_service_account_info(dict(sa_info), scopes=[
+scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
-])
+]
+creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
 client = gspread.authorize(creds)
 spreadsheet = client.open("Debt Collections Dashboard")
 chat_sheet = spreadsheet.worksheet("Agent Chat")
@@ -60,7 +63,7 @@ else:
 # ✅ Unread Messages Popup Notification
 chat_df = pd.DataFrame(chat_sheet.get_all_records())
 if role == "agent":
-    unread_msgs = chat_df[(chat_df["Receiver"] == "Agent") & (chat_df["Sender"] == "Admin")]
+    unread_msgs = chat_df[(chat_df["Receiver"] == "Admin") & (chat_df["Sender"] == username)]
 elif role in ["admin", "superadmin"]:
     unread_msgs = chat_df[(chat_df["Receiver"] == "Admin") & (chat_df["Sender"] == "Agent")]
 else:
