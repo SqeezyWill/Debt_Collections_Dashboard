@@ -1,0 +1,12 @@
+# display Platinum Credit Ltd logo
+st.logo("platinum_logo.png", size="medium", link="https://platinumcreditltd.com")
+
+# optional CSS to adjust logo size and sidebar header background
+st.markdown("""
+<style>
+  img[data-testid="stLogo"] { height: 3.5rem; width: auto; }
+  div[data-testid="stSidebarHeader"] {
+    background-color: #E0F2FF;
+  }
+</style>
+""", unsafe_allow_html=True)

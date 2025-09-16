@@ -1,0 +1,6 @@
+streamlit
+streamlit-autorefresh
+scikit-learn
+gspread
+oauth2client
+
