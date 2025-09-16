@@ -9,9 +9,9 @@ from datetime import datetime, timedelta
 count = st_autorefresh(interval=60_000, limit=None, key="data_refresh")
 
 # --- Google Sheets setup using Streamlit Secrets ---
-sa_info = st.secrets["gcp_service_account"]
-# Fix private_key formatting
-sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+sa_info_raw = st.secrets["gcp_service_account"]
+sa_info = dict(sa_info_raw)  # copy to a new dict
+sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")  # fix formatting
 
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -63,7 +63,7 @@ else:
 # ✅ Unread Messages Popup Notification
 chat_df = pd.DataFrame(chat_sheet.get_all_records())
 if role == "agent":
-    unread_msgs = chat_df[(chat_df["Receiver"] == "Admin") & (chat_df["Sender"] == username)]
+    unread_msgs = chat_df[(chat_df["Receiver"] == "Agent") & (chat_df["Sender"] == "Admin")]
 elif role in ["admin", "superadmin"]:
     unread_msgs = chat_df[(chat_df["Receiver"] == "Admin") & (chat_df["Sender"] == "Agent")]
 else:
